@@ -14,18 +14,18 @@ import java.util.*;
 import static org.apache.commons.codec.digest.DigestUtils.sha256Hex;
 
 @RestController
-@RequestMapping("/api/flink")
-public class FlinkJobController {
+@RequestMapping("/api/timeseries")
+public class TimeSeriesJobController {
 
     @PostMapping("/run")
-    public String runFlinkJob(@RequestBody String inputJson) {
+    public String runJob(@RequestBody String inputJson) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode input = mapper.readTree(inputJson);
 
             // Load DB config
             Properties props = new Properties();
-            props.load(FlinkJobController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
+            props.load(TimeSeriesJobController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
 
             // Ensure table
             try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
