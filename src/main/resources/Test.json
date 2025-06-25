@@ -1,6 +1,9 @@
 {
   "entity": "product_metrics",
   "entityType": "timeSeries",
+  "timeBucketAttributes":["productId","region"],
+  "timeBucket":["quaterly","annual"],
+  "timeBucketInput" : ["Q", "A"],
   "attributes": [
     {
       "attributeName": "attr1",
