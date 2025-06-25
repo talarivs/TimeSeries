@@ -1,0 +1,15 @@
+{
+  "entity" : "key_market_list",
+  "entityType" : "timeSeries",
+  "timeBucketKey" : ["market_segment", "time_bucket", "year"],
+  "timeBucket" : ["quaterly", "yearly"],
+  "attributeList" : [{
+    "attributeName" : "market_segment",
+    "type" : "array",
+    "attributes" : [{
+      "name" : "",
+      "key" : ""
+    }]
+
+  }]
+}

@@ -1,0 +1,6 @@
+{
+  "entity": "product_metrics",
+  "entityType": "timeSeries",
+  "timeSeriesBucket": ["quarterly", "annual"],
+  "timeSeriesKey": ["productId", "region", "quarterly", "annual"]
+}

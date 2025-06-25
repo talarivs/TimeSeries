@@ -1,0 +1,42 @@
+{
+  "entity": "product_metrics",
+  "entityType": "timeSeries",
+  "attributes": [
+    {
+      "attributeName": "attr1",
+      "type": "array",
+      "attributes": [
+        {
+          "name": "",
+          "weight": "",
+          "score_value": "",
+          "score": ""
+        }
+      ]
+    },
+    {
+      "attributeName": "attr2",
+      "type": "object",
+      "attributes": {
+        "name": "",
+        "weight": "",
+        "score_value": "",
+        "score": ""
+      }
+    },
+    {
+      "attributeName": "attr3",
+      "type": "string",
+      "attributes": [""]
+    },
+    {
+      "attributeName": "attr4",
+      "type": "string",
+      "attributes": [""]
+    }
+  ]
+}
+
+
+
+
