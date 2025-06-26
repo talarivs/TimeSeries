@@ -1,4 +1,4 @@
-package com.keylist.demo;
+package com.db_json.demo;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -6,6 +6,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class KeyMarketListTimeSeries {
     public static void main(String[] args) {
-        SpringApplication.run(com.keylist.demo.KeyMarketListTimeSeries.class, args);
+        SpringApplication.run(KeyMarketListTimeSeries.class, args);
     }
 }
