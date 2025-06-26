@@ -1,4 +1,4 @@
-package com.db_json.demo;
+package com.keylist.demo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,8 +14,8 @@ import java.util.*;
 import static org.apache.commons.codec.digest.DigestUtils.sha256Hex;
 
 @RestController
-@RequestMapping("/api/timeseries")
-public class TimeSeriesJobController {
+@RequestMapping("/api/marketdata")
+public class KeyMarketList {
 
     @PostMapping("/run")
     public String runJob(@RequestBody String inputJson) {
@@ -29,12 +29,12 @@ public class TimeSeriesJobController {
             }
 
             Properties props = new Properties();
-            props.load(TimeSeriesJobController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
+            props.load(KeyMarketList.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
 
             try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
                  Statement stmt = conn.createStatement()) {
-                stmt.execute(props.getProperty("sql.create.table"));
-                stmt.execute(props.getProperty("sql.create.index"));
+                stmt.execute(props.getProperty("sql.create.table1"));
+                stmt.execute(props.getProperty("sql.create.index1"));
             }
 
             List<String> bucketAttributes = new ArrayList<>();
@@ -113,7 +113,7 @@ public class TimeSeriesJobController {
                 String hashKey = sha256Hex(String.join(":", rawParts));
 
                 try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
-                     PreparedStatement ps = conn.prepareStatement(props.getProperty("sql.insert"))) {
+                     PreparedStatement ps = conn.prepareStatement(props.getProperty("sql.insert1"))) {
                     ps.setObject(1, metadataJson, java.sql.Types.OTHER);
                     ps.setString(2, hashKey);
                     ps.setObject(3, attributesJson, java.sql.Types.OTHER);
