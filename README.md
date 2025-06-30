@@ -1,5 +1,4 @@
-
-This Spring Boot project provides a dynamic API service that:
+Overview:
 
 - Extracts key fields dynamically using flexible JSON structures
 - Computes hash-based time bucket keys from user-defined dimensions (like `productId`, `region`, `year`, etc.)
