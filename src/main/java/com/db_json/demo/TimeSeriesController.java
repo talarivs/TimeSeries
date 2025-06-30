@@ -9,8 +9,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.Date;
 
-import static org.apache.commons.codec.digest.DigestUtils.sha256Hex;
-
 @RestController
 @RequestMapping("/api")
 public class TimeSeriesController {
@@ -28,36 +26,22 @@ public class TimeSeriesController {
     @PostMapping("/marketdata/run")
     public String runMarketDataJob(@RequestBody String inputJson) {
         return runJob(inputJson, "key_market_list");
+
+
     }
 
+
     private String runJob(String inputJson, String entity) {
+
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode input = mapper.readTree(inputJson);
-
             String validationError = validateInput(input);
             if (validationError != null) {
                 return "Invalid input: " + validationError;
             }
 
-            Properties props = new Properties();
-            props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
 
-            try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
-                 Statement stmt = conn.createStatement()) {
-                String tableQuery = String.format(props.getProperty("sql.create.table"), entity);
-                String indexQuery = String.format(props.getProperty("sql.create.index"), entity);
-                String tableQuery1 = String.format(props.getProperty("sql.create.table1"), entity);
-                String indexQuery1 = String.format(props.getProperty("sql.create.index1"), entity);
-                String tableQuery2 = String.format(props.getProperty("sql.create.table2"), entity);
-                String indexQuery2 = String.format(props.getProperty("sql.create.index2"), entity);
-                stmt.execute(tableQuery);
-                stmt.execute(indexQuery);
-                stmt.execute(tableQuery1);
-                stmt.execute(indexQuery1);
-                stmt.execute(tableQuery2);
-                stmt.execute(indexQuery2);
-            }
 
             List<String> bucketAttributes = new ArrayList<>();
             input.get("timeBucketKey").forEach(n -> bucketAttributes.add(n.asText()));
@@ -65,14 +49,11 @@ public class TimeSeriesController {
             List<String> timeBuckets = new ArrayList<>();
             input.get("timeBucket").forEach(n -> timeBuckets.add(n.asText()));
 
-            List<String> timeBucketInputs = new ArrayList<>();
-            if (input.has("timeBucketInput")) {
-                input.get("timeBucketInput").forEach(n -> timeBucketInputs.add(n.asText()));
-            }
-
             Map<String, Object> attributeList = buildAttributes(input.get("attributes"));
             String dateStr = parseDate(input);
             Date date = new SimpleDateFormat("yyyy-MM-dd").parse(dateStr);
+            Timestamp timestamp = new Timestamp(date.getTime());
+
             Calendar cal = Calendar.getInstance();
             cal.setTime(date);
             int month = cal.get(Calendar.MONTH) + 1;
@@ -83,32 +64,50 @@ public class TimeSeriesController {
 
             Map<String, String> timeBucketMap = buildTimeBucketMap(month, year, quarterly, half, financialYear);
 
-            for (int i = 0; i < timeBuckets.size(); i++) {
-                String bucketType = timeBuckets.get(i).toLowerCase();
-                String bucketValue = timeBucketMap.getOrDefault(bucketType, "");
-                String timeBucketInput = (i < timeBucketInputs.size()) ? timeBucketInputs.get(i) : "default_input";
+            Properties props = new Properties();
+            props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
 
-                StringBuilder valueBuilder = new StringBuilder();
-                List<String> rawParts = new ArrayList<>();
+            try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
+                 Statement stmt = conn.createStatement()) {
 
-                for (String attr : bucketAttributes) {
-                    if (!input.has(attr)) return "Missing value for required attribute: " + attr;
-                    String val = input.get(attr).asText();
-                    valueBuilder.append(val);
-                    rawParts.add(val);
+                if (entity.equals("product_metrics")) {
+                    stmt.execute(props.getProperty("sql.create.table"));
+                    stmt.execute(props.getProperty("sql.create.index"));
+                    stmt.execute(props.getProperty("sql.create.hypertable"));
+
+                } else if (entity.equals("key_market_list")) {
+                    stmt.execute(props.getProperty("sql.create.table1"));
+                    stmt.execute(props.getProperty("sql.create.index1"));
+                    stmt.execute(props.getProperty("sql.create.hypertable1"));
+                } else if (entity.equals("key_customer_list")) {
+                    stmt.execute(props.getProperty("sql.create.table2"));
+                    stmt.execute(props.getProperty("sql.create.index2"));
+                    stmt.execute(props.getProperty("sql.create.hypertable2"));
                 }
 
-                valueBuilder.append(bucketValue).append(year);
-                rawParts.add(bucketValue);
-                rawParts.add(String.valueOf(year));
+                for (String bucketType : timeBuckets) {
+                    String bucketValue = timeBucketMap.getOrDefault(bucketType.toLowerCase(), "");
+                    List<String> rawParts = new ArrayList<>();
+                    StringBuilder valueBuilder = new StringBuilder();
 
-                String key = String.join("_", bucketAttributes) + "_" + bucketType + "_year";
-                String metadataJson = mapper.writeValueAsString(Map.of(key, valueBuilder.toString()));
-                String attributesJson = mapper.writeValueAsString(attributeList);
-                String hashInput = String.join(":", rawParts);
+                    for (String attr : bucketAttributes) {
+                        JsonNode valNode = input.get(attr);
+                        String val = (valNode != null) ? valNode.asText() : "";
+                        rawParts.add(val);
+                        valueBuilder.append(val);
+                    }
 
-                // ✅ INSERT call
-                saveToDatabase(entity, metadataJson, hashInput, attributesJson);
+                    valueBuilder.append(bucketValue).append(year);
+                    rawParts.add(bucketValue);
+                    rawParts.add(String.valueOf(year));
+
+                    String key = String.join("_", bucketAttributes) + "_" + bucketType + "_year";
+                    String metadataJson = mapper.writeValueAsString(Map.of(key, valueBuilder.toString()));
+                    String attributesJson = mapper.writeValueAsString(attributeList);
+                    String hashInput = String.join(":", rawParts);
+
+                    saveToDatabase(entity, timestamp, metadataJson, hashInput, attributesJson, props);
+                }
             }
 
             return "Inserted successfully";
@@ -119,65 +118,46 @@ public class TimeSeriesController {
         }
     }
 
-    private Map<String, String> buildTimeBucketMap(int month, int year, int quarterly, int half, int financialYear) {
-        Map<String, String> timeBucketMap = new LinkedHashMap<>();
-        timeBucketMap.put("monthly", String.valueOf(month));
-        timeBucketMap.put("quarterly", "Q" + quarterly);
-        timeBucketMap.put("halfyearly", "H" + half);
-        timeBucketMap.put("annually", String.valueOf(year));
-        timeBucketMap.put("financialyear", "FY" + financialYear);
-        return timeBucketMap;
-    }
+    private void saveToDatabase(String entity, Timestamp time, String metadataJson, String hashKey, String attributesJson, Properties props) throws Exception {
+        String insertQuery;
+        if (entity.equals("product_metrics")) insertQuery = props.getProperty("sql.insert");
+        else if (entity.equals("key_market_list")) insertQuery = props.getProperty("sql.insert1");
+        else insertQuery = props.getProperty("sql.insert2");
 
-    private void saveToDatabase(String entity, String metadataJson, String hashKey, String attributesJson) {
-        try {
-            Properties props = new Properties();
-            props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
-
-            try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"))) {
-                String insertQuery = getInsertQueryForEntity(entity, props);
-                if (insertQuery == null) {
-                    throw new IllegalArgumentException("No insert query found for entity: " + entity);
-                }
-
-                try (PreparedStatement ps = conn.prepareStatement(insertQuery)) {
-                    ps.setString(1, metadataJson);
-                    ps.setString(2, hashKey); // sha256Hex stored in time_bucket_key TEXT
-                    ps.setString(3, attributesJson);
-                    ps.executeUpdate();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
+             PreparedStatement ps = conn.prepareStatement(insertQuery)) {
+            ps.setTimestamp(1, time);
+            ps.setString(2, metadataJson);
+            ps.setString(3, hashKey);
+            ps.setString(4, attributesJson);
+            ps.executeUpdate();
         }
     }
 
-    private String getInsertQueryForEntity(String entity, Properties props) {
-        return switch (entity) {
-            case "product_metrics" -> props.getProperty("sql.insert");
-            case "key_market_list" -> props.getProperty("sql.insert1");
-            case "key_customer_list" -> props.getProperty("sql.insert2");
-            default -> null;
-        };
+    private Map<String, String> buildTimeBucketMap(int month, int year, int quarterly, int half, int financialYear) {
+        Map<String, String> map = new HashMap<>();
+        map.put("monthly", String.valueOf(month));
+        map.put("quarterly", "Q" + quarterly);
+        map.put("halfyearly", "H" + half);
+        map.put("annually", String.valueOf(year));
+        map.put("financialyear", "FY" + financialYear);
+        return map;
     }
 
     private String parseDate(JsonNode input) {
-        if (input.has("date")) {
-            return input.get("date").asText();
-        } else if (input.has("year") && input.has("time_bucket")) {
-            String q = input.get("time_bucket").asText().toUpperCase();
+        if (input.has("date")) return input.get("date").asText();
+        if (input.has("year") && input.has("time_bucket")) {
             String year = input.get("year").asText();
-            Map<String, String> qMap = Map.of("Q1", "01", "Q2", "04", "Q3", "07", "Q4", "10");
-            return year + "-" + qMap.getOrDefault(q, "01") + "-01";
-        } else if (input.has("year") && input.has("month")) {
-            String month = input.get("month").asText();
-            String year = input.get("year").asText();
-            return year + "-" + (month.length() == 1 ? "0" + month : month) + "-01";
-        } else if (input.has("year")) {
-            return input.get("year").asText() + "-01-01";
-        } else {
-            return "2024-01-01";
+            String tb = input.get("time_bucket").asText().toUpperCase();
+            return year + "-" + switch (tb) {
+                case "Q1" -> "01";
+                case "Q2" -> "04";
+                case "Q3" -> "07";
+                case "Q4" -> "10";
+                default -> "01";
+            } + "-01";
         }
+        return input.get("year").asText() + "-01-01";
     }
 
     private Map<String, Object> buildAttributes(JsonNode attributesNode) {
@@ -188,18 +168,18 @@ public class TimeSeriesController {
             switch (type) {
                 case "string" -> result.put(name, "");
                 case "array" -> {
-                    List<Map<String, Object>> arrayList = new ArrayList<>();
-                    JsonNode arrayFields = attr.get("attributes").get(0);
-                    Map<String, Object> innerArrayMap = new HashMap<>();
-                    arrayFields.fieldNames().forEachRemaining(f -> innerArrayMap.put(f, ""));
-                    arrayList.add(innerArrayMap);
-                    result.put(name, arrayList);
+                    List<Map<String, Object>> list = new ArrayList<>();
+                    JsonNode obj = attr.get("attributes").get(0);
+                    Map<String, Object> sub = new HashMap<>();
+                    obj.fieldNames().forEachRemaining(f -> sub.put(f, ""));
+                    list.add(sub);
+                    result.put(name, list);
                 }
                 case "object" -> {
-                    Map<String, Object> innerObj = new HashMap<>();
-                    JsonNode objFields = attr.get("attributes");
-                    objFields.fieldNames().forEachRemaining(f -> innerObj.put(f, ""));
-                    result.put(name, innerObj);
+                    Map<String, Object> map = new HashMap<>();
+                    JsonNode obj = attr.get("attributes");
+                    obj.fieldNames().forEachRemaining(f -> map.put(f, ""));
+                    result.put(name, map);
                 }
             }
         }
@@ -211,19 +191,13 @@ public class TimeSeriesController {
         List<String> requiredFields = List.of("entity", "entityType", "attributes");
 
         for (String field : requiredFields) {
-            if (!input.has(field)) {
-                return "Missing required field: " + field;
-            }
+            if (!input.has(field)) return "Missing required field: " + field;
         }
 
         for (String arrayField : requiredArrays) {
             if (!input.has(arrayField) || !input.get(arrayField).isArray() || input.get(arrayField).isEmpty()) {
                 return "Missing or empty array field: " + arrayField;
             }
-        }
-
-        if (!input.get("attributes").isArray()) {
-            return "'attributes' must be an array";
         }
 
         for (JsonNode attr : input.get("attributes")) {
@@ -234,4 +208,5 @@ public class TimeSeriesController {
 
         return null;
     }
+
 }
