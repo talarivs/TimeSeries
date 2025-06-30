@@ -88,7 +88,7 @@ Each table uses a hash index for fast lookups on `time_bucket_key`:
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_time_bucket_key_hash
-ON <table_name> USING HASH (digest(time_bucket_key, 'sha256'));
+ON product_metrics USING HASH (digest(time_bucket_key, 'sha256'));
 ```
 
 ###  Hypertables (TimescaleDB)
@@ -96,7 +96,7 @@ ON <table_name> USING HASH (digest(time_bucket_key, 'sha256'));
 Each table is converted to a hypertable for time-series efficiency:
 
 ```sql
-SELECT create_hypertable('<table_name>', 'time', if_not_exists => TRUE);
+SELECT create_hypertable('product_metrics', 'time', if_not_exists => TRUE);
 ```
 
 ##  How It Works
