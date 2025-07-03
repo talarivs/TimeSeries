@@ -17,36 +17,55 @@ public class TimeSeriesController {
 
     @PostMapping("/timeseries/run")
     public String runTimeSeriesJob(@RequestBody String inputJson) {
-        logger.info("Entering runTimeSeriesJob for product_metrics");
+        logger.info("Triggered endpoint: /api/timeseries/run");
         String result = runJob(inputJson, "product_metrics");
-        logger.info("Exiting runTimeSeriesJob");
+        logger.info("Completed endpoint: /api/timeseries/run");
         return result;
     }
 
     @PostMapping("/customerdata/run")
     public String runCustomerDataJob(@RequestBody String inputJson) {
-        logger.info("Entering runCustomerDataJob for key_customer_list");
+        logger.info("Triggered endpoint: /api/customerdata/run");
         String result = runJob(inputJson, "key_customer_list");
-        logger.info("Exiting runCustomerDataJob");
+        logger.info("Completed endpoint: /api/customerdata/run");
         return result;
     }
 
     @PostMapping("/marketdata/run")
     public String runMarketDataJob(@RequestBody String inputJson) {
-        logger.info("Entering runMarketDataJob for key_market_list");
+        logger.info("Triggered endpoint: /api/marketdata/run");
         String result = runJob(inputJson, "key_market_list");
-        logger.info("Exiting runMarketDataJob");
+        logger.info("Completed endpoint: /api/marketdata/run");
         return result;
     }
 
     private String runJob(String inputJson, String entity) {
-        logger.info("Entering runJob for entity: {}", entity);
+        logger.info("Starting job execution for entity: {}", entity);
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode input = mapper.readTree(inputJson);
 
+            logger.info("Received input fields:");
+            input.fields().forEachRemaining(entry -> {
+                String key = entry.getKey();
+                JsonNode value = entry.getValue();
+                if (value.isValueNode()) {
+                    logger.info(" - {}: {}", key, value.asText());
+                } else if (value.isArray()) {
+                    logger.info(" - {} (Array):", key);
+                    for (int i = 0; i < value.size(); i++) {
+                        logger.info("     [{}]: {}", i, value.get(i).toPrettyString());
+                    }
+                } else if (value.isObject()) {
+                    logger.info(" - {} (Object): {}", key, value.toPrettyString());
+                } else {
+                    logger.info(" - {} (Unknown type): {}", key, value.toString());
+                }
+            });
+
             try {
                 TimeSeriesInputValidator.validate(input);
+                logger.info("Input validation passed.");
             } catch (InvalidInputException e) {
                 logger.error("Input validation failed: {}", e.getMessage());
                 return "Invalid input: " + e.getMessage();
@@ -54,14 +73,19 @@ public class TimeSeriesController {
 
             List<String> bucketAttributes = new ArrayList<>();
             input.get("timeBucketKey").forEach(n -> bucketAttributes.add(n.asText()));
-
             List<String> timeBuckets = new ArrayList<>();
             input.get("timeBucket").forEach(n -> timeBuckets.add(n.asText()));
 
-            Map<String, Object> attributeList = buildAttributes(input.get("attributes"));
+            logger.info("Extracted timeBucketKey: {}", bucketAttributes);
+            logger.info("Extracted timeBucket: {}", timeBuckets);
+
+            Map<String, Object> attributeList = extractAndValidateAttributes(input.get("attributes"));
+
             String dateStr = parseDate(input);
+            logger.info("Parsed date: {}", dateStr);
             Date date = new SimpleDateFormat("yyyy-MM-dd").parse(dateStr);
             Timestamp timestamp = new Timestamp(date.getTime());
+            logger.info("Computed timestamp: {}", timestamp);
 
             Calendar cal = Calendar.getInstance();
             cal.setTime(date);
@@ -76,10 +100,13 @@ public class TimeSeriesController {
             Properties props = new Properties();
             props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
 
-            try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
+            try (Connection conn = DriverManager.getConnection(
+                    props.getProperty("db.url"),
+                    props.getProperty("db.user"),
+                    props.getProperty("db.password"));
                  Statement stmt = conn.createStatement()) {
 
-                logger.info("Connected to database and preparing to create table/index for {}", entity);
+                logger.info("Connected to database. Preparing to create table, index, and hypertable for entity: {}", entity);
 
                 switch (entity) {
                     case "product_metrics" -> {
@@ -101,6 +128,8 @@ public class TimeSeriesController {
 
                 for (String bucketType : timeBuckets) {
                     String bucketValue = timeBucketMap.getOrDefault(bucketType.toLowerCase(), "");
+                    logger.info("Processing time bucket: {}, resolved value: {}", bucketType, bucketValue);
+
                     List<String> rawParts = new ArrayList<>();
                     StringBuilder valueBuilder = new StringBuilder();
 
@@ -120,30 +149,39 @@ public class TimeSeriesController {
                     String attributesJson = mapper.writeValueAsString(attributeList);
                     String hashInput = String.join(":", rawParts);
 
+                    logger.info("Generated hashInput: {}", hashInput);
+                    logger.debug("Constructed metadata JSON: {}", metadataJson);
+                    logger.debug("Constructed attributes JSON: {}", attributesJson);
+
                     saveToDatabase(entity, timestamp, metadataJson, hashInput, attributesJson, props);
                 }
             }
 
-            logger.info("Successfully inserted data for entity: {}", entity);
+            logger.info("Data successfully inserted for entity: {}", entity);
             return "Inserted successfully";
 
         } catch (Exception e) {
-            logger.error("Error in runJob for entity {}: {}", entity, e.getMessage(), e);
+            logger.error("Error executing job for entity {}: {}", entity, e.getMessage(), e);
             return "Failed: " + e.getMessage();
         } finally {
-            logger.info("Exiting runJob for entity: {}", entity);
+            logger.info("Completed runJob for entity: {}", entity);
         }
     }
 
     private void saveToDatabase(String entity, Timestamp time, String metadataJson, String hashKey, String attributesJson, Properties props) {
-        logger.info("Entering saveToDatabase for entity: {}", entity);
+        logger.info("Inserting data into entity: {}", entity);
         String insertQuery;
 
         if (entity.equals("product_metrics")) insertQuery = props.getProperty("sql.insert");
         else if (entity.equals("key_market_list")) insertQuery = props.getProperty("sql.insert1");
         else insertQuery = props.getProperty("sql.insert2");
 
-        try (Connection conn = DriverManager.getConnection(props.getProperty("db.url"), props.getProperty("db.user"), props.getProperty("db.password"));
+        logger.debug("Insert query: {}", insertQuery);
+
+        try (Connection conn = DriverManager.getConnection(
+                props.getProperty("db.url"),
+                props.getProperty("db.user"),
+                props.getProperty("db.password"));
              PreparedStatement ps = conn.prepareStatement(insertQuery)) {
 
             ps.setTimestamp(1, time);
@@ -151,29 +189,26 @@ public class TimeSeriesController {
             ps.setString(3, hashKey);
             ps.setString(4, attributesJson);
             ps.executeUpdate();
-            logger.info("Data inserted into {} successfully", entity);
+
+            logger.info("Insert successful for entity: {}", entity);
 
         } catch (Exception e) {
-            logger.error("Error inserting data into {}: {}", entity, e.getMessage(), e);
-        } finally {
-            logger.info("Exiting saveToDatabase for entity: {}", entity);
+            logger.error("Error inserting into entity {}: {}", entity, e.getMessage(), e);
         }
     }
 
     private Map<String, String> buildTimeBucketMap(int month, int year, int quarterly, int half, int financialYear) {
-        logger.info("Entering buildTimeBucketMap");
+        logger.info("Building time bucket map");
         Map<String, String> map = new HashMap<>();
         map.put("monthly", String.valueOf(month));
         map.put("quarterly", "Q" + quarterly);
         map.put("halfyearly", "H" + half);
         map.put("annually", String.valueOf(year));
         map.put("financialyear", "FY" + financialYear);
-        logger.info("Exiting buildTimeBucketMap");
         return map;
     }
 
     private String parseDate(JsonNode input) {
-        logger.info("Entering parseDate");
         try {
             if (input.has("date")) return input.get("date").asText();
             if (input.has("year") && input.has("time_bucket")) {
@@ -189,74 +224,68 @@ public class TimeSeriesController {
             }
             return input.get("year").asText() + "-01-01";
         } catch (Exception e) {
-            logger.error("Error in parseDate: {}", e.getMessage(), e);
-            return "1970-01-01"; // fallback
-        } finally {
-            logger.info("Exiting parseDate");
+            logger.error("Error parsing date: {}", e.getMessage(), e);
+            return "1970-01-01";
         }
     }
 
-    private Map<String, Object> buildAttributes(JsonNode attributesNode) {
-        logger.info("Entering buildAttributes");
+    private Map<String, Object> extractAndValidateAttributes(JsonNode attributesNode) throws InvalidInputException {
+        logger.info("Extracting and validating dynamic attributes");
         Map<String, Object> result = new HashMap<>();
-        try {
-            for (JsonNode attr : attributesNode) {
-                String name = attr.get("attributeName").asText();
-                String type = attr.get("type").asText();
-                switch (type) {
-                    case "string" -> result.put(name, "");
-                    case "array" -> {
+
+        for (JsonNode attr : attributesNode) {
+            String attrName = attr.get("attributeName").asText();
+            String attrType = attr.get("type").asText();
+            JsonNode attributesValue = attr.get("attributes");
+
+            switch (attrType.toLowerCase()) {
+                case "array" -> {
+                    if (attributesValue != null && attributesValue.isArray()) {
                         List<Map<String, Object>> list = new ArrayList<>();
-                        JsonNode obj = attr.get("attributes").get(0);
-                        Map<String, Object> sub = new HashMap<>();
-                        obj.fieldNames().forEachRemaining(f -> sub.put(f, ""));
-                        list.add(sub);
-                        result.put(name, list);
-                    }
-                    case "object" -> {
-                        Map<String, Object> map = new HashMap<>();
-                        JsonNode obj = attr.get("attributes");
-                        obj.fieldNames().forEachRemaining(f -> map.put(f, ""));
-                        result.put(name, map);
+                        for (JsonNode item : attributesValue) {
+                            Map<String, Object> itemMap = new HashMap<>();
+                            for (Iterator<String> fields = item.fieldNames(); fields.hasNext(); ) {
+                                String field = fields.next();
+                                JsonNode fieldSchema = attr.get(field);
+                                JsonNode fieldValue = item.get(field);
+                                if (fieldSchema != null && fieldSchema.has("type")) {
+                                    String expectedType = fieldSchema.get("type").asText();
+                                    if (expectedType.equals("number") && !fieldValue.isNumber()) {
+                                        throw new InvalidInputException("Field '" + field + "' in '" + attrName + "' must be an integer.");
+                                    }
+                                }
+                                itemMap.put(field, fieldValue.asText());
+                            }
+                            list.add(itemMap);
+                        }
+                        result.put(attrName, list);
                     }
                 }
+
+                case "object", "string" -> {
+                    if (attributesValue != null && attributesValue.isObject()) {
+                        Map<String, Object> objMap = new HashMap<>();
+                        for (Iterator<String> fields = attributesValue.fieldNames(); fields.hasNext(); ) {
+                            String field = fields.next();
+                            JsonNode fieldSchema = attr.get(field);
+                            JsonNode fieldValue = attributesValue.get(field);
+                            if (fieldSchema != null && fieldSchema.has("type")) {
+                                String expectedType = fieldSchema.get("type").asText();
+                                if (expectedType.equals("number") && !fieldValue.isNumber()) {
+                                    throw new InvalidInputException("Field '" + field + "' in '" + attrName + "' must be an integer.");
+                                }
+                            }
+                            objMap.put(field, fieldValue.asText());
+                        }
+                        result.put(attrName, objMap);
+                    }
+                }
+
+                default -> logger.warn("Unsupported attribute type: {}", attrType);
             }
-        } catch (Exception e) {
-            logger.error("Error in buildAttributes: {}", e.getMessage(), e);
-        } finally {
-            logger.info("Exiting buildAttributes");
         }
+
+        logger.info("Attribute extraction completed");
         return result;
-    }
-
-    private String validateInput(JsonNode input) {
-        logger.info("Entering validateInput");
-        try {
-            List<String> requiredArrays = List.of("timeBucketKey", "timeBucket");
-            List<String> requiredFields = List.of("entity", "entityType", "attributes");
-
-            for (String field : requiredFields) {
-                if (!input.has(field)) return "Missing required field: " + field;
-            }
-
-            for (String arrayField : requiredArrays) {
-                if (!input.has(arrayField) || !input.get(arrayField).isArray() || input.get(arrayField).isEmpty()) {
-                    return "Missing or empty array field: " + arrayField;
-                }
-            }
-
-            for (JsonNode attr : input.get("attributes")) {
-                if (!attr.has("attributeName") || !attr.has("type")) {
-                    return "Each attribute must have 'attributeName' and 'type'";
-                }
-            }
-
-            return null;
-        } catch (Exception e) {
-            logger.error("Error in validateInput: {}", e.getMessage(), e);
-            return "Invalid input structure";
-        } finally {
-            logger.info("Exiting validateInput");
-        }
     }
 }
