@@ -10,15 +10,7 @@ Overview:
 - Adds SHA-256 hash indexes for fast lookup on `time_bucket_key`
 - Stores all dynamic attributes and hashkey metadata in JSONB format
 
-## API Endpoints
-
-| Method | Endpoint                | Description                        |
-|--------|-------------------------|------------------------------------|
-| POST   | `/api/timeseries/run`   | Inserts into `product_metrics`     |
-| POST   | `/api/customerdata/run` | Inserts into `key_customer_list`   |
-| POST   | `/api/marketdata/run`   | Inserts into `key_market_list`     |
-
-## Sample Postman Input
+## Sample Input
 
 ```json
 {
@@ -122,8 +114,7 @@ SELECT create_hypertable('product_metrics', 'time', if_not_exists => TRUE);
 ##  Tables Managed
 
 - `product_metrics`
-- `key_market_list`
-- `key_customer_list`
+
 
 All are dynamically created with hypertable logic, indexes, and flexible schemas.
 
@@ -138,6 +129,5 @@ Before processing:
 ## Setup & Run
 
 1. Start PostgreSQL (ensure TimescaleDB is enabled).
-2. Clone the project and configure `application.properties` or `JSONtoDB1_config.properties`.
+2. Clone the project and configure `application.properties`.
 3. Run the Spring Boot app.
-4. Use Postman or `curl` to POST dynamic JSON to any of the 3 endpoints.
