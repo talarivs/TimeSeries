@@ -3,10 +3,8 @@ Overview:
 - Extracts key fields dynamically using flexible JSON structures
 - Computes hash-based time bucket keys from user-defined dimensions (like `productId`, `region`, `year`, etc.)
 - Automatically creates hypertables using TimescaleDB in PostgreSQL for efficient time-series data storage
-- Supports inserting data into **three independently managed tables**:
-  - `product_metrics`
-  - `key_market_list`
-  - `key_customer_list`
+- Supports inserting data into **three independently managed table**:
+
 - Adds SHA-256 hash indexes for fast lookup on `time_bucket_key`
 - Stores all dynamic attributes and hashkey metadata in JSONB format
 
