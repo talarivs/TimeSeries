@@ -1,0 +1,137 @@
+{
+  "entity": "product_metrics",
+  "entityType": "timeSeries",
+  "timeBucketKey": ["productId", "region"],
+  "timeBucket": ["quarterly", "annually"],
+  "timeBucketInput": ["time_bucket", "year"],
+  "productId": "1234",
+  "region": "Asia",
+  "year": "2025",
+  "date": "2025-05-27",
+  "time_bucket": "Q2",
+  "attributes": [
+    {
+      "attributeName": "attr1",
+      "type": "array",
+      "attributes": [
+        {
+          "name": "sim",
+          "weight": 20,
+          "score_value": 10,
+          "score": 10
+        },
+        {
+          "name": "sam",
+          "weight": 25,
+          "score_value": 12,
+          "score": 12
+        }
+      ],
+      "name": {
+        "type": "string",
+        "dateformat": "",
+        "scale": "",
+        "validValues": ["sim", "sam"],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "weight": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score_value": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      }
+    },
+    {
+      "attributeName": "attr2",
+      "type": "object",
+      "attributes": {
+        "name": "max",
+        "weight": 30,
+        "score_value": 15,
+        "score": 15
+      },
+      "name": {
+        "type": "string",
+        "dateformat": "",
+        "scale": "",
+        "validValues": ["max"],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "weight": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score_value": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score": {
+        "type": "number",
+        "dateformat": "",
+        "scale": "0",
+        "validValues": [],
+        "mandatory": true,
+        "enableUpdate": true
+      }
+    },
+    {
+      "attributeName": "attr3",
+      "type": "string",
+      "attributes": {
+        "name": "A",
+        "weight": 30,
+        "score_value": 15,
+        "score": 12
+      },
+      "name": {
+        "type": "string",
+        "validValues": ["A", "B", "C"],
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "weight": {
+        "type": "number",
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score_value": {
+        "type": "number",
+        "mandatory": true,
+        "enableUpdate": true
+      },
+      "score": {
+        "type": "number",
+        "mandatory": true,
+        "enableUpdate": true
+      }
+    }
+  ]
+}

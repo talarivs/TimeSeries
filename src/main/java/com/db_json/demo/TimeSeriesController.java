@@ -2,55 +2,42 @@ package com.db_json.demo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.*;
 import java.util.Date;
+import java.io.File;
+import java.nio.file.Files;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-@RestController
-@RequestMapping("/api")
+@Service
 public class TimeSeriesController {
 
-    private static final String CLASSNAME = TimeSeriesController.class.getSimpleName();
     private static final Logger logger = LoggerFactory.getLogger(TimeSeriesController.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    @PostMapping("/timeseries/run")
-    public String runTimeSeriesJob(@RequestBody String inputJson) {
-        logger.info("[{}] Start - /timeseries/run endpoint triggered", CLASSNAME);
-        String result = processRequest(inputJson, "product_metrics");
-        logger.info("[{}] End - /timeseries/run completed", CLASSNAME);
-        return result;
-    }
-
-    @PostMapping("/customerdata/run")
-    public String runCustomerDataJob(@RequestBody String inputJson) {
-        logger.info("[{}] Start - /customerdata/run endpoint triggered", CLASSNAME);
-        String result = processRequest(inputJson, "key_customer_list");
-        logger.info("[{}] End - /customerdata/run completed", CLASSNAME);
-        return result;
-    }
-
-    @PostMapping("/marketdata/run")
-    public String runMarketDataJob(@RequestBody String inputJson) {
-        logger.info("[{}] Start - /marketdata/run endpoint triggered", CLASSNAME);
-        String result = processRequest(inputJson, "key_market_list");
-        logger.info("[{}] End - /marketdata/run completed", CLASSNAME);
-        return result;
+    public String processJsonFile(String filePath, String entityName) {
+        try {
+            logger.info("Reading JSON input from file: {}", filePath);
+            String inputJson = new String(Files.readAllBytes(new File(filePath).toPath()));
+            return processRequest(inputJson, entityName);
+        } catch (Exception e) {
+            logger.error("Failed to read or process JSON file: {}", e.getMessage(), e);
+            return "Error: " + e.getMessage();
+        }
     }
 
     private String processRequest(String inputJson, String entity) {
-        logger.info("[{}] Processing request for entity: {}", CLASSNAME, entity);
+        logger.info("Processing request for entity: {}", entity);
         try {
             JsonNode input = objectMapper.readTree(inputJson);
-            logger.debug("[{}] Raw input JSON: {}", CLASSNAME, input);
+            logger.debug("Parsed input JSON: {}", input);
             TimeSeriesInputValidator.validate(input);
-            logger.info("[{}] Input validation passed.", CLASSNAME);
+            logger.info("Input JSON validated successfully.");
 
             List<String> bucketAttributes = Optional.ofNullable(input.get("timeBucketKey"))
                     .map(this::jsonArrayToList)
@@ -59,73 +46,65 @@ public class TimeSeriesController {
                     .map(this::jsonArrayToList)
                     .orElse(Collections.emptyList());
 
-            logger.info("[{}] Time bucket attributes: {}", CLASSNAME, bucketAttributes);
-            logger.info("[{}] Time buckets requested: {}", CLASSNAME, timeBuckets);
+            logger.info("Time bucket attributes: {}", bucketAttributes);
+            logger.info("Time buckets requested: {}", timeBuckets);
 
             Map<String, Object> attributeList = extractAttributes(input.get("attributes"));
-            logger.debug("[{}] Parsed attribute list: {}", CLASSNAME, attributeList);
+            logger.debug("Parsed attribute list: {}", attributeList);
 
             Date date = new SimpleDateFormat("yyyy-MM-dd").parse(getDate(input));
             Timestamp timestamp = new Timestamp(date.getTime());
-            logger.info("[{}] Parsed timestamp: {}", CLASSNAME, timestamp);
+            logger.info("Parsed timestamp: {}", timestamp);
 
             Map<String, String> timeBucketMap = getTimeBuckets(date);
-            logger.debug("[{}] Resolved time bucket map: {}", CLASSNAME, timeBucketMap);
+            logger.debug("Resolved time bucket map: {}", timeBucketMap);
 
             Properties props = loadProperties();
-            logger.info("[{}] Properties loaded successfully.", CLASSNAME);
+            logger.info("Properties loaded successfully.");
 
             Map<String, EntityConfig> entityConfigs = loadEntityConfigs(props);
             EntityConfig config = entityConfigs.get(entity);
             if (config == null) {
-                logger.error("[{}] No configuration found for entity: {}", CLASSNAME, entity);
+                logger.error("No configuration found for entity: {}", entity);
                 return "Configuration missing for entity: " + entity;
             }
 
             setupDatabase(config, props);
-            logger.info("[{}] Database setup complete for entity: {}", CLASSNAME, entity);
+            logger.info("Database setup complete for entity: {}", entity);
 
             timeBuckets.forEach(bucket -> handleInsertion(bucket, input, config, props,
                     bucketAttributes, timeBucketMap, attributeList, timestamp));
 
-            logger.info("[{}] Data insertion completed successfully for entity: {}", CLASSNAME, entity);
+            logger.info("Data insertion completed successfully for entity: {}", entity);
             return "Inserted successfully";
 
-        } catch (InvalidInputException ex) {
-            logger.error("[{}] Input validation error: {}", CLASSNAME, ex.getMessage());
-            return "Invalid input: " + ex.getMessage();
         } catch (Exception ex) {
-            logger.error("[{}] Unexpected error: {}", CLASSNAME, ex.getMessage(), ex);
+            logger.error("Unexpected error: {}", ex.getMessage(), ex);
             return "Failed: " + ex.getMessage();
         }
     }
 
     private List<String> jsonArrayToList(JsonNode arrayNode) {
-        logger.debug("[{}] Converting JsonArray to List", CLASSNAME);
         return IntStream.range(0, arrayNode.size())
                 .mapToObj(i -> arrayNode.get(i).asText())
                 .collect(Collectors.toList());
     }
 
     private String getDate(JsonNode input) {
-        String date = Optional.ofNullable(input.get("date"))
+        return Optional.ofNullable(input.get("date"))
                 .map(JsonNode::asText)
                 .orElseGet(() -> getDefaultDate(input));
-        logger.info("[{}] Resolved date: {}", CLASSNAME, date);
-        return date;
     }
 
     private String getDefaultDate(JsonNode input) {
         String year = input.has("year") ? input.get("year").asText() : "1970";
         String tb = input.has("time_bucket") ? input.get("time_bucket").asText().toUpperCase() : "Q1";
-        String defaultDate = switch (tb) {
+        return switch (tb) {
             case "Q2" -> year + "-04-01";
             case "Q3" -> year + "-07-01";
             case "Q4" -> year + "-10-01";
             default -> year + "-01-01";
         };
-        logger.debug("[{}] Computed default date: {}", CLASSNAME, defaultDate);
-        return defaultDate;
     }
 
     private Map<String, String> getTimeBuckets(Date date) {
@@ -143,7 +122,6 @@ public class TimeSeriesController {
     }
 
     private void setupDatabase(EntityConfig config, Properties props) throws SQLException {
-        logger.info("[{}] Setting up database schema...", CLASSNAME);
         try (Connection conn = DriverManager.getConnection(
                 props.getProperty("db.url"),
                 props.getProperty("db.user"),
@@ -153,47 +131,38 @@ public class TimeSeriesController {
             stmt.execute(props.getProperty(config.createTableKey()));
             stmt.execute(props.getProperty(config.createIndexKey()));
             stmt.execute(props.getProperty(config.createHypertableKey()));
-
-            logger.info("[{}] Database schema setup completed.", CLASSNAME);
         }
     }
 
     private void handleInsertion(String bucketType, JsonNode input, EntityConfig config, Properties props,
                                  List<String> bucketAttributes, Map<String, String> timeBucketMap,
                                  Map<String, Object> attributeList, Timestamp timestamp) {
-        logger.info("[{}] Handling insertion for time bucket type: {}", CLASSNAME, bucketType);
 
         String bucketValue = timeBucketMap.getOrDefault(bucketType.toLowerCase(), "");
-        logger.debug("[{}] Resolved time bucket value: {}", CLASSNAME, bucketValue);
-
         List<String> rawParts = bucketAttributes.stream()
                 .map(attr -> Optional.ofNullable(input.get(attr)).map(JsonNode::asText).orElse(""))
                 .collect(Collectors.toList());
-
-        logger.debug("[{}] Raw compound key parts: {}", CLASSNAME, rawParts);
 
         StringBuilder keyBuilder = new StringBuilder();
         rawParts.forEach(keyBuilder::append);
         keyBuilder.append(bucketValue);
 
         String compoundKey = keyBuilder.toString();
-        logger.info("[{}] Constructed compound key: {}", CLASSNAME, compoundKey);
-
         String key = String.join("_", bucketAttributes) + "_" + bucketType + "_year";
-        String metadataJson = toJson(Map.of(key, compoundKey + String.valueOf(Calendar.getInstance().get(Calendar.YEAR))));
+        String metadataJson = toJson(Map.of(key, compoundKey + Calendar.getInstance().get(Calendar.YEAR)));
         String attributesJson = toJson(attributeList);
         String hashKey = String.join(":", rawParts) + ":" + bucketValue + ":" + Calendar.getInstance().get(Calendar.YEAR);
 
-        logger.info("[{}] Final hash key: {}", CLASSNAME, hashKey);
-        logger.debug("[{}] Final metadata JSON: {}", CLASSNAME, metadataJson);
-        logger.debug("[{}] Final attribute JSON: {}", CLASSNAME, attributesJson);
+        logger.info("Compound key: {}", compoundKey);
+        logger.info("Final hash key: {}", hashKey);
+        logger.debug("Metadata JSON: {}", metadataJson);
+        logger.debug("Attribute JSON: {}", attributesJson);
 
         saveRecord(timestamp, metadataJson, hashKey, attributesJson, props, config);
     }
 
     private void saveRecord(Timestamp time, String metadataJson, String hashKey,
                             String attributesJson, Properties props, EntityConfig config) {
-        logger.info("[{}] Saving record to table using insert key: {}", CLASSNAME, config.insertKey());
         try (Connection conn = DriverManager.getConnection(
                 props.getProperty("db.url"),
                 props.getProperty("db.user"),
@@ -205,23 +174,19 @@ public class TimeSeriesController {
             ps.setString(3, hashKey);
             ps.setString(4, attributesJson);
             ps.executeUpdate();
-
-            logger.info("[{}] Record inserted successfully.", CLASSNAME);
-
+            logger.info("Record inserted successfully.");
         } catch (Exception ex) {
-            logger.error("[{}] Error inserting data: {}", CLASSNAME, ex.getMessage(), ex);
+            logger.error("Error inserting data: {}", ex.getMessage(), ex);
         }
     }
 
     private Properties loadProperties() throws Exception {
-        logger.info("[{}] Loading configuration properties...", CLASSNAME);
         Properties props = new Properties();
-        props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("JSONtoDB1_config.properties"));
+        props.load(TimeSeriesController.class.getClassLoader().getResourceAsStream("application.properties"));
         return props;
     }
 
     private Map<String, EntityConfig> loadEntityConfigs(Properties props) {
-        logger.info("[{}] Loading entity configuration mappings...", CLASSNAME);
         return Arrays.stream(props.getProperty("entities", "").split(","))
                 .filter(entity -> !entity.isBlank())
                 .collect(Collectors.toMap(
@@ -235,8 +200,7 @@ public class TimeSeriesController {
                 ));
     }
 
-    private Map<String, Object> extractAttributes(JsonNode attributesNode) throws InvalidInputException {
-        logger.info("[{}] Extracting dynamic attributes...", CLASSNAME);
+    private Map<String, Object> extractAttributes(JsonNode attributesNode) {
         if (attributesNode == null || !attributesNode.isArray()) return Collections.emptyMap();
 
         return IntStream.range(0, attributesNode.size())
@@ -251,35 +215,25 @@ public class TimeSeriesController {
     private Object parseAttribute(JsonNode attrNode) {
         String type = attrNode.get("type").asText().toLowerCase();
         JsonNode values = attrNode.get("attributes");
-        logger.debug("[{}] Parsing attribute '{}', type='{}'", CLASSNAME, attrNode.get("attributeName").asText(), type);
 
         if ("array".equals(type) && values.isArray()) {
             return IntStream.range(0, values.size())
                     .mapToObj(values::get)
                     .map(node -> objectMapper.convertValue(node, Map.class))
                     .collect(Collectors.toList());
-
         } else if ("object".equals(type) && values.isObject()) {
             return objectMapper.convertValue(values, Map.class);
-
         } else if ("string".equals(type)) {
-            if (values.isObject()) {
-                return objectMapper.convertValue(values, Map.class);
-            } else if (values.isTextual()) {
-                return values.asText();
-            }
+            return values.isObject() ? objectMapper.convertValue(values, Map.class) : values.asText();
         }
-
         return "";
     }
 
     private String toJson(Object obj) {
         try {
-            String json = objectMapper.writeValueAsString(obj);
-            logger.debug("[{}] Serialized object to JSON: {}", CLASSNAME, json);
-            return json;
+            return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
-            logger.error("[{}] Error serializing object: {}", CLASSNAME, e.getMessage(), e);
+            logger.error("Error serializing object: {}", e.getMessage(), e);
             return "{}";
         }
     }
@@ -290,7 +244,7 @@ public class TimeSeriesController {
         private final String createHypertableKey;
         private final String insertKey;
 
-        EntityConfig(String createTableKey, String createIndexKey, String createHypertableKey, String insertKey) {
+        public EntityConfig(String createTableKey, String createIndexKey, String createHypertableKey, String insertKey) {
             this.createTableKey = createTableKey;
             this.createIndexKey = createIndexKey;
             this.createHypertableKey = createHypertableKey;
